@@ -1,0 +1,42 @@
+[
+  {
+    "id": 1,
+    "number": "1",
+    "name": "RVO 1",
+    "lat": 50.5161117,
+    "lng": 14.0492269,
+    "address": "Osvoboditelů 97/20",
+    "description": "",
+    "plcIp": "192.168.0.10"
+  },
+  {
+    "id": 2,
+    "number": "2",
+    "name": "RVO 2",
+    "lat": 50.5149803,
+    "lng": 14.0578767,
+    "address": "Zimní stadion",
+    "description": "",
+    "plcIp": "192.168.0.11"
+  },
+  {
+    "id": 3,
+    "number": "3",
+    "name": "RVO 3",
+    "lat": 50.5151875,
+    "lng": 14.0511628,
+    "address": "Václavské náměstí 176",
+    "description": "",
+    "plcIp": "192.168.0.12"
+  },
+  {
+    "id": 4,
+    "number": "4",
+    "name": "RVO 4",
+    "lat": 50.5130486,
+    "lng": 14.0561506,
+    "address": "Kostelní 8/13",
+    "description": "",
+    "plcIp": "192.168.0.13"
+  }
+]
