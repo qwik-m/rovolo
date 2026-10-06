@@ -139,7 +139,7 @@ function getIcon(rvo) {
 function generatePopup(rvo) {
     const statusColor = getStatusColor(rvo);
     const statusText = getStatusText(statusColor);
-    const addressText = rvo.address ? `<div class="popup-address">📍 ${rvo.address}</div>` : '';
+    const addressText = rvo.address ? `<div class="popup-address"> ${rvo.address}</div>` : '';
 
     if (!rvo.commOk) {
         return `
