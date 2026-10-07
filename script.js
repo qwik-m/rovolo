@@ -1,14 +1,18 @@
 // 1. Inicializace mapy
 const map = L.map('map').setView([50.6607, 14.0328], 13); 
 
+// Tmavé mapové podklady CARTO s maxNativeZoom: 18
 const cartoDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_4ca6_1_811760e8cf36cfcad66df8b0', {
-    maxZoom: 19,
+    maxZoom: 20,
+    maxNativeZoom: 18, // Správný limit pro CARTO rasterové dlaždice
     subdomains: 'abcd',
     attribution: '© OpenStreetMap, © CARTO'
 });
 
+// Světlé mapové podklady CARTO s maxNativeZoom: 18
 const cartoVoyager = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_4ca6_1_811760e8cf36cfcad66df8b0', {
-    maxZoom: 19,
+    maxZoom: 20,
+    maxNativeZoom: 18, // Správný limit pro CARTO rasterové dlaždice
     subdomains: 'abcd',
     attribution: '© OpenStreetMap, © CARTO'
 });
@@ -23,13 +27,6 @@ L.control.layers({
 // Úložiště rozvaděčů na frontendu
 const rvoStore = {};
 
-// Záložní výchozí konfigurace (použije se, pokud neběží server ani nejde načíst rvo_config.json)
-const fallbackConfig = [
-    { id: 1, number: "1", name: "RVO 1 - Náměstí", lat: 50.6610, lng: 14.0330, address: "Mírové náměstí 1", description: "Rozvaděč u budovy radnice", commOk: true, mainPowerOk: true, circuits: { c1: true, c2: true }, contactorOn: false },
-    { id: 2, number: "2", name: "RVO 2 - Průmyslová zóna", lat: 50.6720, lng: 14.0200, address: "Průmyslová 450", description: "Vjezd do průmyslového areálu", commOk: true, mainPowerOk: true, circuits: { c1: true, c2: false }, contactorOn: true },
-    { id: 3, number: "3", name: "RVO 3 - Sídliště", lat: 50.6500, lng: 14.0400, address: "U Sídliště 12", description: "Křižovatka ulic Hlavní a Školní", commOk: true, mainPowerOk: false, circuits: { c1: false, c2: false }, contactorOn: false },
-    { id: 4, number: "4", name: "RVO 4 - Odlehlá oblast", lat: 50.6650, lng: 14.0600, address: "Pod Lesem E15", description: "Trafostanice v okrajové části", commOk: false, mainPowerOk: false, circuits: { c1: false, c2: false }, contactorOn: false }
-];
 
 // Funkce pro načtení a vykreslení/aktualizaci rozvaděčů
 function loadCabinetsData(dataList) {
@@ -55,18 +52,17 @@ function loadCabinetsData(dataList) {
     });
 }
 
-// KROK 1: Přímý pokus o načtení souboru rvo_config.json
+// Načtení reálných dat z JSON konfigurace
 fetch('rvo_config.json')
     .then(response => {
-        if (!response.ok) throw new Error('Soubor rvo_config.json nenalezen.');
+        if (!response.ok) throw new Error('Konfigurační soubor rvo_config.json nebyl nalezen.');
         return response.json();
     })
     .then(data => {
         loadCabinetsData(data);
     })
     .catch(err => {
-        console.warn('Načítání rvo_config.json přes fetch selhalo, používám záložní konfiguraci:', err.message);
-        loadCabinetsData(fallbackConfig);
+        console.error('Chyba při načítání konfigurace RVO:', err.message);
     });
 
 // KROK 2: Připojení k WebSocket serveru pro živá data z PLC
@@ -120,21 +116,23 @@ function getStatusText(statusColor) {
     }
 }
 
+// 5. Tvorba ikon s PEVNÝM ukotvením středu (100% přesnost na GPS souřadnice)
 function getIcon(rvo) {
     const statusColor = getStatusColor(rvo);
-    const zoom = map.getZoom();
-    const size = Math.max(16, Math.min(50, 26 + (zoom - 13) * 5)); 
-    const fontSize = Math.max(9, size * 0.45);
+    const size = 32;
+    const halfSize = 16; // Přesně polovina velikosti ikony
 
     return L.divIcon({
         className: 'rvo-marker-container',
-        html: `<div class="rvo-badge status-${statusColor}" style="width: ${size}px; height: ${size}px; font-size: ${fontSize}px;">
-                 ${rvo.number}
-               </div>`,
-        iconSize: [size, size],
-        iconAnchor: [size / 2, size / 2]
+        html: `<div class="rvo-badge status-${statusColor}">${rvo.number}</div>`,
+        iconSize: [size, size],          // Velikost [32, 32]
+        iconAnchor: [halfSize, halfSize], // Ukotvení GPS na střed [16, 16]
+        popupAnchor: [0, -halfSize]       // Vyskakovací okno se otevře nad ikonou [0, -16]
     });
 }
+
+// POZNÁMKA: Událost map.on('zoomend', ...) již NENÍ POTŘEBA a byla odstraněna.
+// Leaflet nyní drží pozice rozvaděčů 100% plynule a bez jakýchkoliv skoků.
 
 function generatePopup(rvo) {
     const statusColor = getStatusColor(rvo);
@@ -212,11 +210,6 @@ function updateRvoOnMap(rvo) {
     }
 }
 
-map.on('zoomend', function() {
-    Object.values(rvoStore).forEach(rvo => {
-        if (rvo.markerElement) rvo.markerElement.setIcon(getIcon(rvo));
-    });
-});
 
 window.toggleContactor = function(id) {
     const rvo = rvoStore[id];

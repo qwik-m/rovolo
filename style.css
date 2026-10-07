@@ -21,29 +21,39 @@ body, html {
    STYLOVÁNÍ IKON ROZVADĚČŮ NA MAPĚ
    ========================================== */
 
+/* Správné vynulování pozadí a rámečku BEZ přebíjení marginů Leafletu */
+.leaflet-marker-icon.rvo-marker-container {
+    background: transparent !important;
+    border: none !important;
+}
+
 .rvo-marker-container {
     display: flex;
     align-items: center;
     justify-content: center;
-    position: relative;
+    width: 32px !important;
+    height: 32px !important;
 }
 
-/* Vnější kruh / tělo značky */
 .rvo-badge {
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 700;
+    font-size: 13px;
     color: #ffffff;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.3);
     border: 2px solid #0f172a;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.2s ease;
     cursor: pointer;
+    box-sizing: border-box;
 }
 
 .rvo-badge:hover {
-    transform: scale(1.15);
+    transform: scale(1.2);
     z-index: 1000 !important;
 }
 
@@ -104,12 +114,12 @@ body, html {
     border: 1px solid #334155;
 }
 
-/* Pozicionování a stylování zavíracího křížku */
+/* Pozicionování a stylování zavíracího křížku přesně do vyhrazené zóny */
 .leaflet-container a.leaflet-popup-close-button {
     color: #94a3b8 !important;
     padding: 0 !important;
     top: 12px !important;
-    right: 12px !important;
+    right: 10px !important;
     width: 20px !important;
     height: 20px !important;
     font-size: 16px !important;
@@ -143,7 +153,7 @@ body, html {
 /* Levý blok s názvem a adresou */
 .popup-header-info {
     flex: 1 1 auto;       /* Zabere veškeré volné místo */
-    min-width: 0;         /* KLÍČOVÉ: Dovolí Flexboxu zkracovat text uvnitř! */
+    min-width: 0;         /* Dovolí Flexboxu zkracovat text uvnitř */
     display: flex;
     flex-direction: column;
 }
@@ -172,7 +182,7 @@ body, html {
 
 /* Stavový odznak (OFFLINE, PORUCHA, OK) */
 .status-pill {
-    flex-shrink: 0;       /* KLÍČOVÉ: Odznak se nikdy nesmrští ani neposune do křížku */
+    flex-shrink: 0;       /* Odznak se nikdy nesmrští ani neposune do křížku */
     font-size: 10px;
     font-weight: 700;
     padding: 3px 8px;
@@ -180,24 +190,6 @@ body, html {
     text-transform: uppercase;
     letter-spacing: 0.5px;
     white-space: nowrap;
-}
-
-/* Pozicionování zavíracího křížku Leafletu přesně do vyhrazené zóny */
-.leaflet-container a.leaflet-popup-close-button {
-    color: #94a3b8 !important;
-    padding: 0 !important;
-    top: 12px !important;
-    right: 10px !important;
-    width: 20px !important;
-    height: 20px !important;
-    font-size: 16px !important;
-    line-height: 20px !important;
-    text-align: center;
-    z-index: 10;
-}
-
-.leaflet-container a.leaflet-popup-close-button:hover {
-    color: #ffffff !important;
 }
 
 .status-pill.green { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
