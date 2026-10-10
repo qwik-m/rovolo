@@ -1,21 +1,24 @@
-// 1. Inicializace mapy
-const map = L.map('map').setView([50.6607, 14.0328], 13); 
-
-// Tmavé mapové podklady CARTO s maxNativeZoom: 18
-const cartoDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_4ca6_1_811760e8cf36cfcad66df8b0', {
-    maxZoom: 20,
-    maxNativeZoom: 18, // Správný limit pro CARTO rasterové dlaždice
-    subdomains: 'abcd',
-    attribution: '© OpenStreetMap, © CARTO'
-});
+// ==========================================
+// 1. INICIALIZACE MAPY A PODKLADŮ
+// ==========================================
+const map = L.map('map').setView([50.5165181, 14.0475836], 13); 
 
 // Světlé mapové podklady CARTO s maxNativeZoom: 18
 const cartoVoyager = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_4ca6_1_811760e8cf36cfcad66df8b0', {
     maxZoom: 20,
-    maxNativeZoom: 18, // Správný limit pro CARTO rasterové dlaždice
+    maxNativeZoom: 18,
     subdomains: 'abcd',
     attribution: '© OpenStreetMap, © CARTO'
 });
+
+// Tmavé mapové podklady CARTO s maxNativeZoom: 18
+const cartoDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_4ca6_1_811760e8cf36cfcad66df8b0', {
+    maxZoom: 20,
+    maxNativeZoom: 18,
+    subdomains: 'abcd',
+    attribution: '© OpenStreetMap, © CARTO'
+});
+
 
 cartoDark.addTo(map);
 
@@ -27,8 +30,10 @@ L.control.layers({
 // Úložiště rozvaděčů na frontendu
 const rvoStore = {};
 
+// ==========================================
+// 2. NAČTĚNÍ A STRUKTURA DAT
+// ==========================================
 
-// Funkce pro načtení a vykreslení/aktualizaci rozvaděčů
 function loadCabinetsData(dataList) {
     dataList.forEach(item => {
         if (!rvoStore[item.id]) {
@@ -43,16 +48,20 @@ function loadCabinetsData(dataList) {
                 commOk: item.commOk ?? false,
                 mainPowerOk: item.mainPowerOk ?? false,
                 circuits: item.circuits || { c1: false, c2: false },
-                contactorOn: item.contactorOn ?? false
+                contactorOn: item.contactorOn ?? false,
+                isPending: false // UI Zámek proti blikání
             };
         } else {
+            // Zachování stavu zápisu (isPending) během aktualizace dat
+            const currentPending = rvoStore[item.id].isPending;
             Object.assign(rvoStore[item.id], item);
+            rvoStore[item.id].isPending = currentPending;
         }
         updateRvoOnMap(rvoStore[item.id]);
     });
 }
 
-// Načtení reálných dat z JSON konfigurace
+// Načtení výchozí konfigurace z JSON
 fetch('rvo_config.json')
     .then(response => {
         if (!response.ok) throw new Error('Konfigurační soubor rvo_config.json nebyl nalezen.');
@@ -65,14 +74,19 @@ fetch('rvo_config.json')
         console.error('Chyba při načítání konfigurace RVO:', err.message);
     });
 
-// KROK 2: Připojení k WebSocket serveru pro živá data z PLC
-function connectWebSocket() {
-    if (!window.location.host) return; // Pokud je stránka otevřena lokálně bez HTTP serveru
+// ==========================================
+// 3. WEBSOCKET KOMUNIKACE (HTTPS/WSS READY)
+// ==========================================
 
-    const socket = new WebSocket(`ws://${window.location.host}`);
+function connectWebSocket() {
+    if (!window.location.host) return;
+
+    // Automatické přepínání mezi wss:// (HTTPS) a ws:// (HTTP)
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socket = new WebSocket(`${protocol}//${window.location.host}`);
 
     socket.onopen = function() {
-        console.log("WebSocket spojen s backendem.");
+        console.log("WebSocket úspěšně spojen s backendem.");
     };
 
     socket.onmessage = function(event) {
@@ -87,11 +101,13 @@ function connectWebSocket() {
     };
 
     socket.onclose = function() {
-        console.warn("WebSocket odpojen.");
+        console.warn("WebSocket odpojen od backendu.");
         Object.values(rvoStore).forEach(rvo => {
             rvo.commOk = false;
+            rvo.isPending = false;
             updateRvoOnMap(rvo);
         });
+        setTimeout(connectWebSocket, 3000);
     };
 
     window.rvoSocket = socket;
@@ -99,10 +115,15 @@ function connectWebSocket() {
 
 connectWebSocket();
 
+// ==========================================
+// 4. LOGIKA STAVŮ A VYHODNOCENÍ PORUCH
+// ==========================================
+
 function getStatusColor(rvo) {
     if (!rvo.commOk) return 'white';
+    // Porucha = Výpadek hlavního napájení NEBO výpadek kterékoliv z větví
     if (!rvo.mainPowerOk) return 'red';
-    if (rvo.circuits && (!rvo.circuits.c1 || !rvo.circuits.c2)) return 'yellow';
+    if (rvo.circuits && (!rvo.circuits.c1 || !rvo.circuits.c2)) return 'red';
     return 'green';
 }
 
@@ -116,28 +137,28 @@ function getStatusText(statusColor) {
     }
 }
 
-// 5. Tvorba ikon s PEVNÝM ukotvením středu (100% přesnost na GPS souřadnice)
+// ==========================================
+// 5. RENDER IKON A POPUP OKNA LEAFLET
+// ==========================================
+
 function getIcon(rvo) {
     const statusColor = getStatusColor(rvo);
     const size = 32;
-    const halfSize = 16; // Přesně polovina velikosti ikony
+    const halfSize = 16;
 
     return L.divIcon({
         className: 'rvo-marker-container',
         html: `<div class="rvo-badge status-${statusColor}">${rvo.number}</div>`,
-        iconSize: [size, size],          // Velikost [32, 32]
-        iconAnchor: [halfSize, halfSize], // Ukotvení GPS na střed [16, 16]
-        popupAnchor: [0, -halfSize]       // Vyskakovací okno se otevře nad ikonou [0, -16]
+        iconSize: [size, size],
+        iconAnchor: [halfSize, halfSize],
+        popupAnchor: [0, -halfSize]
     });
 }
-
-// POZNÁMKA: Událost map.on('zoomend', ...) již NENÍ POTŘEBA a byla odstraněna.
-// Leaflet nyní drží pozice rozvaděčů 100% plynule a bez jakýchkoliv skoků.
 
 function generatePopup(rvo) {
     const statusColor = getStatusColor(rvo);
     const statusText = getStatusText(statusColor);
-    const addressText = rvo.address ? `<div class="popup-address"> ${rvo.address}</div>` : '';
+    const addressText = rvo.address ? `<div class="popup-address">${rvo.address}</div>` : '';
 
     if (!rvo.commOk) {
         return `
@@ -159,9 +180,14 @@ function generatePopup(rvo) {
     const c1Dot = rvo.circuits.c1 ? '<span class="dot dot-green"></span>' : '<span class="dot dot-red"></span>';
     const c2Dot = rvo.circuits.c2 ? '<span class="dot dot-green"></span>' : '<span class="dot dot-red"></span>';
 
-    const btnClass = rvo.contactorOn ? 'active' : 'inactive';
-    const btnText = rvo.contactorOn ? 'STYKAČ: ZAPNUTO' : 'STYKAČ: VYPNUTO';
-    const isDisabled = !rvo.mainPowerOk ? 'disabled' : '';
+    let btnClass = rvo.contactorOn ? 'active' : 'inactive';
+    let btnText = rvo.contactorOn ? 'STYKAČ: ZAPNUTO' : 'STYKAČ: VYPNUTO';
+    let isDisabled = !rvo.mainPowerOk || rvo.isPending ? 'disabled' : '';
+
+    if (rvo.isPending) {
+        btnText = 'PROBÍHÁ ZÁPIS...';
+        btnClass += ' pending';
+    }
 
     return `
         <div class="popup-card">
@@ -187,7 +213,7 @@ function generatePopup(rvo) {
                 </div>
                 
                 <div class="contactor-control">
-                    <button class="btn-toggle ${btnClass}" ${isDisabled} onclick="toggleContactor(${rvo.id})">
+                    <button class="btn-toggle ${btnClass}" ${isDisabled} onclick="toggleContactor(event, ${rvo.id})">
                         ${btnText}
                     </button>
                 </div>
@@ -204,19 +230,46 @@ function updateRvoOnMap(rvo) {
     } else {
         rvo.markerElement.setLatLng([rvo.lat, rvo.lng]);
         rvo.markerElement.setIcon(getIcon(rvo));
+        
+        // Přepíše obsah popupu POUZE v případě, že se reálně změnilo HTML
         if (rvo.markerElement.isPopupOpen()) {
-            rvo.markerElement.getPopup().setContent(generatePopup(rvo));
+            const newContent = generatePopup(rvo);
+            const popup = rvo.markerElement.getPopup();
+            
+            if (popup.getContent() !== newContent) {
+                popup.setContent(newContent);
+            }
         }
     }
 }
 
+// ==========================================
+// 6. OVLÁDÁNÍ STYKAČE BEZ ZAVÍRÁNÍ A BLIKÁNÍ
+// ==========================================
 
-window.toggleContactor = function(id) {
+window.toggleContactor = function(event, id) {
+    // Zamezí propadnutí události kliknutí do mapy (předchází zavření popup okna)
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
     const rvo = rvoStore[id];
-    if (rvo && rvo.commOk && rvo.mainPowerOk && window.rvoSocket) {
+    
+    if (rvo && rvo.commOk && rvo.mainPowerOk && window.rvoSocket && !rvo.isPending) {
+        rvo.isPending = true;
+        updateRvoOnMap(rvo);
+
         window.rvoSocket.send(JSON.stringify({
             command: 'TOGGLE_CONTACTOR',
             id: id
         }));
+
+        setTimeout(() => {
+            if (rvo.isPending) {
+                rvo.isPending = false;
+                updateRvoOnMap(rvo);
+            }
+        }, 1500);
     }
 };

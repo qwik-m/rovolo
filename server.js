@@ -20,12 +20,12 @@ function logEvent(level, source, message) {
     console.log(`[${timestamp}] [${level.toUpperCase()}] [${source}] ${message}`);
 }
 
-// Mapování S7 proměnných v PLC
 const PLC_VARIABLES = {
-    mainPowerOk: 'MR0',   // M0.0 - Hlídací relé napětí (1 = OK, 0 = Výpadek)
-    circuit1: 'MR1',      // M0.1 - Snímání Obvodu 1
-    circuit2: 'MR2',      // M0.2 - Snímání Obvodu 2
-    contactor: 'QX0.0'    // %Q0.0 - Výstup pro ovládání stykače
+    mainPowerOk: 'I0.0',   // Čtení z fyzického vstupu %I0.0
+    circuit1: 'I0.1',      // Čtení z fyzického vstupu %I0.1
+    circuit2: 'I0.2',      // Čtení z fyzického vstupu %I0.2
+    contactor: 'Q0.0',     // Čtení stavu fyzického výstupu %Q0.0
+    webCommand: 'M10.0'    // ZÁPIS povelu z webu do merkeru %M10.0 (mimo MB0)
 };
 
 // Podklad pro uložení stavů a PLC instancí
@@ -59,7 +59,8 @@ rvoConfigList.forEach(rvo => {
         commOk: false,
         mainPowerOk: false,
         circuits: { c1: false, c2: false },
-        contactorOn: false
+        contactorOn: false,
+        isPending: false // Zámek pro vyhlazení asynchronního zápisu z webu
     };
 });
 
@@ -107,7 +108,6 @@ function connectToPlc(rvoId) {
             instance.connected = false;
             updateState(rvoId, { commOk: false });
             
-            // Opakovaný pokus o připojení za 5 sekund
             setTimeout(() => connectToPlc(rvoId), 5000);
         } else {
             logEvent('SUCCESS', `RVO ${rvo.id}`, `PLC na IP ${targetIp} úspěšně připojeno.`);
@@ -141,7 +141,6 @@ function readPlcCycle(rvoId) {
         const newC2 = Boolean(values.circuit2);
         const newContactor = Boolean(values.contactor);
 
-        // Detekce a logování poruch / změn stavů
         if (!rvo.commOk) {
             logEvent('INFO', `RVO ${rvoId}`, 'Komunikace s rozvaděčem obnovena.');
         }
@@ -154,19 +153,40 @@ function readPlcCycle(rvoId) {
             }
         }
 
-        if (rvo.contactorOn !== newContactor) {
-            logEvent('ACTION', `RVO ${rvoId}`, `Stav stykače v PLC změněn na: ${newContactor ? 'ZAPNUTO' : 'VYPNUTO'}`);
-        }
+            // Vložit do readPlcCycle(rvoId) pod kontrolu mainPowerOk:
 
-        // Aktualizace stavu rozvaděče
-        updateState(rvoId, {
+            // Detekce výpadku Větve 1
+        if (rvo.circuits && rvo.circuits.c1 !== newC1) {
+        if (!newC1 && rvo.contactorOn) {
+            logEvent('ALARM', `RVO ${rvoId}`, 'PORUCHA: Výpadek napětí na Větvi 1!');
+        } else if (newC1) {
+            logEvent('INFO', `RVO ${rvoId}`, 'OBNOVENO: Větev 1 je v pořádku.');
+    }
+}
+
+// Detekce výpadku Větve 2
+if (rvo.circuits && rvo.circuits.c2 !== newC2) {
+    if (!newC2 && rvo.contactorOn) {
+        logEvent('ALARM', `RVO ${rvoId}`, 'PORUCHA: Výpadek napětí na Větvi 2!');
+    } else if (newC2) {
+        logEvent('INFO', `RVO ${rvoId}`, 'OBNOVENO: Větev 2 je v pořádku.');
+    }
+}
+
+        // Příprava dat k aktualizaci
+        const updatedFields = {
             commOk: true,
             mainPowerOk: newPower,
-            circuits: { c1: newC1, c2: newC2 },
-            contactorOn: newContactor
-        });
+            circuits: { c1: newC1, c2: newC2 }
+        };
 
-        // Periodické čtení každých 500ms
+        // Stav stykače přepíšeme z PLC pouze tehdy, pokud nečekáme na doběh povelu z webu
+        if (!rvo.isPending) {
+            updatedFields.contactorOn = newContactor;
+        }
+
+        updateState(rvoId, updatedFields);
+
         setTimeout(() => readPlcCycle(rvoId), 500);
     });
 }
@@ -199,7 +219,6 @@ wss.on('connection', (ws, req) => {
     const clientIp = req.socket.remoteAddress;
     logEvent('WEB', 'WEBSOCKET', `Připojen nový webový klient (${clientIp})`);
 
-    // Odeslání aktuálního stavu všech RVO po připojení
     ws.send(JSON.stringify({
         type: 'RVO_INIT_ALL',
         data: Object.values(rvoStates)
@@ -232,15 +251,28 @@ wss.on('connection', (ws, req) => {
                 }
 
                 const newState = !rvo.contactorOn;
-                logEvent('ACTION', `RVO ${targetId}`, `Zápis na PLC %Q0.0 -> ${newState ? 'TRUE' : 'FALSE'}`);
+                
+                // 1. Okamžitě změníme stav v paměti backendu a zamkneme dočasně přepisování z readPlcCycle
+                rvo.contactorOn = newState;
+                rvo.isPending = true;
+                broadcastStates();
 
-                instance.client.writeItems('contactor', newState, (err) => {
+                logEvent('ACTION', `RVO ${targetId}`, `Zápis na PLC %M10.0 -> ${newState ? 'TRUE' : 'FALSE'}`);
+
+                // 2. Zápis povelu do merkeru M10.0
+                instance.client.writeItems('webCommand', newState, (err) => {
                     if (err) {
                         logEvent('ERROR', `RVO ${targetId}`, `Chyba při zápisu do PLC: ${err.message}`);
-                    } else {
-                        logEvent('SUCCESS', `RVO ${targetId}`, `Stykač úspěšně přepnut na: ${newState ? 'ZAPNUTO' : 'VYPNUTO'}`);
-                        rvo.contactorOn = newState;
+                        rvo.contactorOn = !newState;
+                        rvo.isPending = false;
                         broadcastStates();
+                    } else {
+                        logEvent('SUCCESS', `RVO ${targetId}`, `Povel M10.0 úspěšně zapsán (${newState ? 'TRUE' : 'FALSE'})`);
+                        
+                        // Po 1.5 s uvolníme zámek pro běžný odpočet z PLC %Q0.0
+                        setTimeout(() => {
+                            rvo.isPending = false;
+                        }, 1500);
                     }
                 });
             }
@@ -255,7 +287,7 @@ wss.on('connection', (ws, req) => {
 });
 
 // ==========================================
-// 5. SPŮŠTĚNÍ SERVERU
+// 5. SPUŠTĚNÍ SERVERU
 // ==========================================
 
 setupPlcConnections();

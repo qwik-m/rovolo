@@ -286,3 +286,27 @@ body, html {
     cursor: not-allowed;
     box-shadow: none;
 }
+
+.btn {
+    padding: 10px 15px;
+    font-weight: bold;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+
+.btn-on {
+    background-color: #28a745;
+    color: white;
+}
+
+.btn-off {
+    background-color: #dc3545;
+    color: white;
+}
+
+.btn.pending, .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
