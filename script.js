@@ -179,6 +179,7 @@ function generatePopup(rvo) {
     const powerDot = rvo.mainPowerOk ? '<span class="dot dot-green"></span>' : '<span class="dot dot-red"></span>';
     const c1Dot = rvo.circuits.c1 ? '<span class="dot dot-green"></span>' : '<span class="dot dot-red"></span>';
     const c2Dot = rvo.circuits.c2 ? '<span class="dot dot-green"></span>' : '<span class="dot dot-red"></span>';
+    const contactorFbDot = rvo.contactorFeedback ? '<span class="dot dot-green"></span>' : '<span class="dot dot-red"></span>';
 
     let btnClass = rvo.contactorOn ? 'active' : 'inactive';
     let btnText = rvo.contactorOn ? 'STYKAČ: ZAPNUTO' : 'STYKAČ: VYPNUTO';
@@ -200,7 +201,7 @@ function generatePopup(rvo) {
             </div>
             <div class="popup-body">
                 <div class="info-row">
-                    <span class="info-label">Napájení (Relé):</span>
+                    <span class="info-label">Napájení :</span>
                     <span class="info-value">${powerDot} ${rvo.mainPowerOk ? 'OK' : 'Výpadek'}</span>
                 </div>
                 <div class="info-row">
@@ -210,6 +211,10 @@ function generatePopup(rvo) {
                 <div class="info-row">
                     <span class="info-label">Obvod 2:</span>
                     <span class="info-value">${c2Dot} ${rvo.circuits.c2 ? 'OK' : 'Porucha'}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Stav stykače:</span>
+                    <span class="info-value">${contactorFbDot} ${rvo.contactorFeedback ? 'Zapnuto' : 'Vypnuto'}</span>
                 </div>
                 
                 <div class="contactor-control">

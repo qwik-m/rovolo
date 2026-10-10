@@ -21,11 +21,12 @@ function logEvent(level, source, message) {
 }
 
 const PLC_VARIABLES = {
-    mainPowerOk: 'I0.0',   // Čtení z fyzického vstupu %I0.0
-    circuit1: 'I0.1',      // Čtení z fyzického vstupu %I0.1
-    circuit2: 'I0.2',      // Čtení z fyzického vstupu %I0.2
-    contactor: 'Q0.0',     // Čtení stavu fyzického výstupu %Q0.0
-    webCommand: 'M10.0'    // ZÁPIS povelu z webu do merkeru %M10.0 (mimo MB0)
+    mainPowerOk: 'I0.0',       // Čtení z fyzického vstupu %I0.0
+    circuit1: 'I0.1',          // Čtení z fyzického vstupu %I0.1
+    circuit2: 'I0.2',          // Čtení z fyzického vstupu %I0.2
+    contactor: 'Q0.0',         // Čtení stavu fyzického výstupu %Q0.0
+    webCommand: 'M10.0',       // ZÁPIS povelu z webu do merkeru %M10.0 (mimo MB0)
+    contactorFeedback: 'I0.3'  // Čtení zpětné vazby stykače z %I0.3
 };
 
 // Podklad pro uložení stavů a PLC instancí
@@ -59,6 +60,7 @@ rvoConfigList.forEach(rvo => {
         commOk: false,
         mainPowerOk: false,
         circuits: { c1: false, c2: false },
+        contactorFeedback: false,
         contactorOn: false,
         isPending: false // Zámek pro vyhlazení asynchronního zápisu z webu
     };
@@ -140,6 +142,7 @@ function readPlcCycle(rvoId) {
         const newC1 = Boolean(values.circuit1);
         const newC2 = Boolean(values.circuit2);
         const newContactor = Boolean(values.contactor);
+        const newContactorFeedback = Boolean(values.contactorFeedback);
 
         if (!rvo.commOk) {
             logEvent('INFO', `RVO ${rvoId}`, 'Komunikace s rozvaděčem obnovena.');
@@ -153,31 +156,30 @@ function readPlcCycle(rvoId) {
             }
         }
 
-            // Vložit do readPlcCycle(rvoId) pod kontrolu mainPowerOk:
-
-            // Detekce výpadku Větve 1
+        // Detekce výpadku Větve 1
         if (rvo.circuits && rvo.circuits.c1 !== newC1) {
-        if (!newC1 && rvo.contactorOn) {
-            logEvent('ALARM', `RVO ${rvoId}`, 'PORUCHA: Výpadek napětí na Větvi 1!');
-        } else if (newC1) {
-            logEvent('INFO', `RVO ${rvoId}`, 'OBNOVENO: Větev 1 je v pořádku.');
-    }
-}
+            if (!newC1 && rvo.contactorOn) {
+                logEvent('ALARM', `RVO ${rvoId}`, 'PORUCHA: Výpadek napětí na Větvi 1!');
+            } else if (newC1) {
+                logEvent('INFO', `RVO ${rvoId}`, 'OBNOVENO: Větev 1 je v pořádku.');
+            }
+        }
 
-// Detekce výpadku Větve 2
-if (rvo.circuits && rvo.circuits.c2 !== newC2) {
-    if (!newC2 && rvo.contactorOn) {
-        logEvent('ALARM', `RVO ${rvoId}`, 'PORUCHA: Výpadek napětí na Větvi 2!');
-    } else if (newC2) {
-        logEvent('INFO', `RVO ${rvoId}`, 'OBNOVENO: Větev 2 je v pořádku.');
-    }
-}
+        // Detekce výpadku Větve 2
+        if (rvo.circuits && rvo.circuits.c2 !== newC2) {
+            if (!newC2 && rvo.contactorOn) {
+                logEvent('ALARM', `RVO ${rvoId}`, 'PORUCHA: Výpadek napětí na Větvi 2!');
+            } else if (newC2) {
+                logEvent('INFO', `RVO ${rvoId}`, 'OBNOVENO: Větev 2 je v pořádku.');
+            }
+        }
 
-        // Příprava dat k aktualizaci
+        // Jediná a správná příprava dat k aktualizaci
         const updatedFields = {
             commOk: true,
             mainPowerOk: newPower,
-            circuits: { c1: newC1, c2: newC2 }
+            circuits: { c1: newC1, c2: newC2 },
+            contactorFeedback: newContactorFeedback
         };
 
         // Stav stykače přepíšeme z PLC pouze tehdy, pokud nečekáme na doběh povelu z webu
@@ -187,6 +189,7 @@ if (rvo.circuits && rvo.circuits.c2 !== newC2) {
 
         updateState(rvoId, updatedFields);
 
+        // Periodické čtení každých 500ms
         setTimeout(() => readPlcCycle(rvoId), 500);
     });
 }
