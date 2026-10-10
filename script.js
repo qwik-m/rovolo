@@ -20,7 +20,7 @@ const cartoDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x
 });
 
 
-cartoDark.addTo(map);
+cartoVoyager.addTo(map);
 
 L.control.layers({
     "Tmavá (Dark Matter)": cartoDark,
